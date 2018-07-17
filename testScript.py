@@ -1,4 +1,4 @@
-#!usr/bin/emv python
+#!usr/bin/env python
 
 from tkinter import *
 from firebase import firebase
