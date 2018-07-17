@@ -34,7 +34,7 @@ def cardRead():
 	enterButton.grid(row=4, columnspan=2, sticky=S)
 	enterButton.bind("<FocusIn>", checkExistence)
 
-	#rootA.eval('tk::PlaceWindow %s center' % rootA.winfo_pathname(rootA.winfo_id()))
+	rootA.eval('tk::PlaceWindow %s center' % rootA.winfo_pathname(rootA.winfo_id()))
 	rootA.mainloop()
 
 def checkExistence(event=""):
@@ -93,30 +93,31 @@ def enterInfo(c):
 	idN.bind("<Return>", checkField)
 	enterButton.bind("<Return>", checkField)
 	
-	#rootB.eval('tk::PlaceWindow %s center' % rootB.winfo_pathname(rootB.winfo_id()))
+	rootB.eval('tk::PlaceWindow %s center' % rootB.winfo_pathname(rootB.winfo_id()))
 	rootB.mainloop()
 
 def checkField(event=""):
-	if(firstN.get() != "" and lastN.get() != "" and idN.get() != ""):
+	if(re.search('[a-zA-Z]', firstN.get()) and re.search('[a-zA-Z]', lastN.get()) and re.search('[a-zA-Z]', idN.get()) and len(idN.get()) <=10):
 		holdValues = [firstN.get(), lastN.get(), idN.get()]
 		rootB.destroy()
 		writeToBase(holdValues[0].capitalize(), holdValues[1].capitalize(), holdValues[2].upper(), cardID)
 	else:
-		aL = Label(rootB, text='Fill in all fields!', font=("Futura", 16), fg="white", bg="#24336C") 
+		aL = Label(rootB, text='Fill in all fields and use Drexel id!', font=("Futura", 16), fg="white", bg="#24336C") 
 		aL.grid(row=7, columnspan=2)
 
 def writeToBase(first, last, id, card):
 	result = firebase.put('/USERS/', cardID, {'FIRST' : first, 'LAST' : last, 'ID' : id})
-	sendEmail(id)
+	sendEmail(id, detailsArray[0], detailsArray[1])
 	writeToLog(first, last, id)
 	
 def writeToLog(first, last, id):
+	authorize()
 	now = datetime.datetime.now()
 	
 	lastEntry = worksheet.findall(id)
 	if(lastEntry == []):
 		worksheet.append_row([first, last, id, now.strftime("%m-%d-%Y %H:%M:%S")])
-		alertUser()
+		alertUser(first)
 	else:
 		checkSign = worksheet.acell('E' + str(lastEntry[len(lastEntry)-1].row)).value
 		if(checkSign == ""):
@@ -124,12 +125,12 @@ def writeToLog(first, last, id):
 			timeSpent = now - lastDate
 			worksheet.update_acell('E' + str(lastEntry[len(lastEntry)-1].row), now.strftime("%m-%d-%Y %H:%M:%S"))
 			worksheet.update_acell('F' + str(lastEntry[len(lastEntry)-1].row), timeSpent)
-			alertUser(timeSpent)
+			alertUser(first, timeSpent)
 		else:
 			worksheet.append_row([first, last, id, now.strftime("%m-%d-%Y %H:%M:%S")])
-			alertUser()
+			alertUser(first)
 	
-def alertUser(t=""):
+def alertUser(first, t=""):
 	global rootC
 	
 	rootC = Tk()
@@ -138,26 +139,36 @@ def alertUser(t=""):
 	rootC.focus_force()
 	
 	if(t == ""):
-		typeL = Label(rootC, text='\nYou Have Signed In\n', font=("Futura", 16), fg="white", bg="#24336C") 
+		typeL = Label(rootC, text=('\n   Welcome ' + first + ',   \n   You Have Signed In   \n'), font=("Futura", 16), fg="white", bg="#24336C") 
 		typeL.grid(row=1, column=0)
 	else:
-		typeL = Label(rootC, text=('\nYou Have Signed Out\nTotal Time: ' + str(t) + '\n'), font=("Futura", 16), fg="white", bg="#24336C") 
+		typeL = Label(rootC, text=('\n   Farewell ' + first + ',   \n   You Have Signed Out   \n\n   Total Time: ' + str(t) + '   \n'), font=("Futura", 16), fg="white", bg="#24336C") 
 		typeL.grid(row=1, column=0)
 	
 	rootC.after(3000, clearScreen)
-	#rootC.eval('tk::PlaceWindow %s center' % rootC.winfo_pathname(rootC.winfo_id()))
+	rootC.eval('tk::PlaceWindow %s center' % rootC.winfo_pathname(rootC.winfo_id()))
 	rootC.mainloop()
 
 def clearScreen():
 	rootC.destroy()
 	cardRead()
 
-if __name__ == "__main__":
-	firebase = firebase.FirebaseApplication('https://dsh-card-reader.firebaseio.com/', None)
-	scope = ['https://spreadsheets.google.com/feeds']
-	credentials = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
+def authorize():
+	global worksheet
 	gc = gspread.authorize(credentials)
-	sheet = gc.open_by_url('https://docs.google.com/spreadsheets/d/1gZPE4RG0m1B06jWp5_JAzgW4tJgWJupde3mk7mDeLQE/edit#gid=0')
+	sheet = gc.open_by_url(detailsArray[3])
 	worksheet = sheet.get_worksheet(0)
+	
+if __name__ == "__main__":
+	detailsArray = []
+	filepath = 'scriptDetails.txt'  
+	with open(filepath) as fp:  
+		line = fp.readline()
+		while line:
+			detailsArray.append(line.strip())
+			line = fp.readline()
+	
+	firebase = firebase.FirebaseApplication(detailsArray[2], None)
+	credentials = ServiceAccountCredentials.from_json_keyfile_name('creds.json', ['https://spreadsheets.google.com/feeds'])
 	
 	cardRead()

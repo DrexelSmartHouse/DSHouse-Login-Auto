@@ -1,4 +1,0 @@
-1. navigate to this directory and enter the following command to install necessary libraries
-
-pip install -r requirements.txt
-
