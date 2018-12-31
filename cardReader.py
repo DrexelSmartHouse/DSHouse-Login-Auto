@@ -6,16 +6,9 @@ import gspread
 from mailchimp3 import MailChimp
 from tkinter import *
 
-# Python Version 3.7.1
-# MAilchimp API Key
-# d0affafbcd3fcbc78925e697e732aef6-us9
-# Mailchimp list ID 6bfbb8bd35
-
-
 cardN = None
 rootA = None
 rootC = None
-
 
 def cardRead():
     global rootA
