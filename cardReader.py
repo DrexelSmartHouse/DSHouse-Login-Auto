@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 from mailchimp3 import MailChimp
 from tkinter import *
+from pygame import mixer
 
 cardN = None
 rootA = None
@@ -110,6 +111,10 @@ def enterInfo(c):
 
     rootB.eval('tk::PlaceWindow %s center' %
                rootB.winfo_pathname(rootB.winfo_id()))
+
+    mixer.music.load('sounds/welcome.mp3')
+    mixer.music.play()
+
     rootB.mainloop()
 
 
@@ -123,6 +128,8 @@ def checkField(event=""):
         aL = Label(rootB, text='Fill in all fields and use Drexel id!',
                    font=("Futura", 16), fg="white", bg="#24336C")
         aL.grid(row=7, columnspan=2)
+        mixer.music.load('sounds/error.mp3')
+        mixer.music.play()
 
 
 def writeToBase(first, last, id, card):
@@ -170,15 +177,19 @@ def alertUser(first, t=""):
         typeL = Label(rootC, text=('\n   Welcome ' + first + ',   \n   You Have Signed In   \n'),
                       font=("Futura", 16), fg="white", bg="#24336C")
         typeL.grid(row=1, column=0)
+        w = 250  # width for the Tk root
+        h = 100  # height for the Tk root
+        mixer.music.load('sounds/hello.mp3')
+
     else:
         typeL = Label(rootC, text=('\n   Farewell ' + first + ',   \n   You Have Signed Out   \n\n   Total Time: ' +
                                    str(t) + '   \n'), font=("Futura", 16), fg="white", bg="#24336C")
         typeL.grid(row=1, column=0)
+        w = 300  # width for the Tk root
+        h = 150  # height for the Tk root
+        mixer.music.load('sounds/goodbye.mp3')
 
     rootC.after(1000, clearScreen)
-
-    w = 300  # width for the Tk root
-    h = 100  # height for the Tk root
 
     ws = rootC.winfo_screenwidth()  # width of the screen
     hs = rootC.winfo_screenheight()  # height of the screen
@@ -186,7 +197,7 @@ def alertUser(first, t=""):
     x = (ws/2) - (w/2)
     y = (hs/4) - (h/2)
     rootC.geometry('%dx%d+%d+%d' % (w, h, x, y))
-
+    mixer.music.play()
     rootC.mainloop()
 
 
@@ -235,5 +246,5 @@ if __name__ == "__main__":
 
     credentials = ServiceAccountCredentials.from_json_keyfile_name(
         'creds.json', ['https://spreadsheets.google.com/feeds'])
-
+    mixer.init()
     cardRead()
