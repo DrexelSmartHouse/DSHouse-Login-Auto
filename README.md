@@ -39,11 +39,10 @@ DSH sign in system using Drexel ID cards. Included automatic addition to emailin
 ## Releases <a name="releases"></a>
 Version 1.0 - Initial Release.
 Version 2.0 - Made multiple sequential sign-ins faster. Added sounds, and connection to the mailchimp API.
+Version 3.0 - Updated UI. List of members currently signed in to the house. Manual house sign-out. "Signed In" list now populates initially based on the Logs.
 
 ## Future Features <a name="future"></a>
-- Async tasks for faster sign-in and better user experience
-- Nicer looking GUI with DSH brand
-- List of members currently signed in to the house
+- Async/threaded tasks for faster sign-in and better user experience
 - 24 Hour automatic sign out and alerting system for members who forget to sign out
 
 ## Contributors <a name="contributors"></a>

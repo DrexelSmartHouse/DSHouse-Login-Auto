@@ -70,7 +70,7 @@ def init():
     scrollbar = Scrollbar(frame2)
     scrollbar.pack(side=RIGHT, fill=Y)
     userList = Listbox(frame2, font=("Futura", 16),
-          fg="black", selectmode=MULTIPLE, yscrollcommand=scrollbar.set)
+                       fg="black", selectmode=SINGLE, yscrollcommand=scrollbar.set)
     userList.pack()
     scrollbar.config(command=userList.yview)
 
@@ -85,10 +85,10 @@ def init():
     Label(frame3, textvariable=text, font=(
         "Futura", 16), fg="white", bg="#24336C").pack()
 
-
     cardN.focus_set()
     scanScreen.focus_force()
 
+    pullSignedInUsersFromLog()
     scanScreen.mainloop()
 
 
@@ -100,7 +100,7 @@ def signOut():
     for index in signOutIndex:
         userList.delete(index)
         writeToLog(usersSignedIn[index])
-    
+
 
 def checkExistence(event=""):
     if(cardN.get() != ""):
@@ -109,7 +109,7 @@ def checkExistence(event=""):
         result = db.child('USERS').child(c).get().val()
         if(result != None):
             writeToLog(user.User(result['FIRST'],
-                                 result['LAST'], result['ID'], c, True))
+                                 result['LAST'], result['ID'], c))
         else:
             enterInfo(c)
 
@@ -177,7 +177,7 @@ def checkField(event=""):
         holdValues = [firstN.get(), lastN.get(), idN.get()]
         rootB.destroy()
         writeToBase(user.User(holdValues[0].capitalize(
-        ), holdValues[1].capitalize(), holdValues[2].upper(), cardID, True))
+        ), holdValues[1].capitalize(), holdValues[2].upper(), cardID))
     else:
         aL = Label(rootB, text='Fill in all fields and use Drexel id!',
                    font=("Futura", 16), fg="white", bg="#24336C")
@@ -193,10 +193,25 @@ def writeToBase(newUser):
     writeToLog(newUser)
 
 
+def pullSignedInUsersFromLog():
+    global usersSignedIn
+    global userList
+    authorize()
+    column_vals = worksheet.col_values(5)
+    signedInUserIdxs = [i for i, x in enumerate(column_vals) if x == ""]
+    for i in (signedInUserIdxs):
+        fName = worksheet.acell('A' + str(i+1)).value
+        lName = worksheet.acell('B' + str(i+1)).value
+        drexelId = worksheet.acell('C' + str(i+1)).value
+        userList.insert(END, fName + ' ' + lName)
+        usersSignedIn.append(user.User(fName, lName, drexelId, None))
+
+
 def writeToLog(newUser):
     global usersSignedIn
+    global userList
 
-    scanScreen.focus_set() #Removes focus from the text box temporarily
+    scanScreen.focus_set()  # Removes focus from the text box temporarily
     authorize()
     now = datetime.datetime.now()
     lastEntry = worksheet.findall(newUser.id)
@@ -206,7 +221,6 @@ def writeToLog(newUser):
             [newUser.first, newUser.last, newUser.id, now.strftime("%m-%d-%Y %H:%M:%S")])
         usersSignedIn.append(newUser)
         userList.insert(END, newUser.first + ' ' + newUser.last)
-
         alertUser(newUser.first)
     else:
         checkSign = worksheet.acell(
@@ -223,7 +237,8 @@ def writeToLog(newUser):
                 if cur.id == newUser.id:
                     usersSignedIn.remove(cur)
                     try:
-                        delIndex = userList.get(0,END).index(cur.first + ' ' + cur.last)
+                        delIndex = userList.get(0, END).index(
+                            cur.first + ' ' + cur.last)
                         userList.delete(delIndex)
                     except ValueError:
                         print('Item can not be found in the list!')
