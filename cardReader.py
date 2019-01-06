@@ -1,54 +1,106 @@
 import asyncio
 import datetime
 from tkinter import *
+from PIL import ImageTk, Image
 
 import gspread
 import pyrebase
 from mailchimp3 import MailChimp
 from oauth2client.service_account import ServiceAccountCredentials
 from pygame import mixer
+import user
 
 cardN = None
-rootA = None
-rootC = None
+scanScreen = Tk()
+userList = None
+usersSignedIn = []
+text = StringVar()
+logoPath = "pictures/bannerLogo.png"
 
-def cardRead():
-    global rootA
+WIDTH = scanScreen.winfo_screenwidth()
+HEIGHT = scanScreen.winfo_screenheight()
+
+
+def init():
+    global scanScreen
     global cardN
+    global usersSignedIn
+    global userList
+    global frame3
 
-    if rootA == None:
-        rootA = Tk()
+    scanScreen.geometry('%dx%d' % (WIDTH, HEIGHT))
+    scanScreen.configure(background='#24336C')
+    scanScreen.title('Drexel Smart House Card Scanner')
 
-    rootA.configure(background='#24336C')
-    rootA.title('Scan Card')
+    photoFrame = Frame(scanScreen, bg="#24336C")
+    photoFrame.pack(side=TOP)
 
-    instruction = Label(rootA, text='Please Scan Your Card\n',
-                        font=("Futura", 20), fg="white", bg="#24336C")
-    instruction.grid(row=0, columnspan=2)
+    img = Image.open(logoPath)
+    [imageWidth, imageHeight] = img.size
+    # Compute resize ratio for max size with half height of the screen and full width
+    n = min(WIDTH/imageWidth, HEIGHT/2/imageHeight)
+    img = img.resize(
+        (int(imageWidth * n), int(imageHeight * n)), Image.ANTIALIAS)
+    photo = ImageTk.PhotoImage(img)
+    Label(photoFrame, image=photo, bg="#24336C").pack(fill=X)
 
-    cardL = Label(rootA, text='Card ID:', font=(
-        "Futura", 16), fg="white", bg="#24336C")
-    cardL.grid(row=1, column=0, sticky=W)
+    frame1 = Frame(scanScreen, relief=RAISED, borderwidth=5, bg="#24336C")
+    frame1.pack(fill=Y, side=LEFT, padx=50, expand=1)
 
-    sL = Label(rootA, text='S', font=("Futura", 16),
-               fg="#24336C", bg="#24336C")
-    sL.grid(row=3, column=0, sticky=W)
+    Label(frame1, text='Please Scan Your Card\n',
+          font=("Futura", 20), fg="white", bg="#24336C").pack()
 
-    cardN = Entry(rootA, show="*", font=("Futura", 16), width=25)
-    cardN.grid(row=2, column=0, sticky=E)
+    Label(frame1, text='Card ID:', font=(
+        "Futura", 16), fg="white", bg="#24336C").pack()
 
-    cardN.focus_set()
-    rootA.focus_force()
+    cardN = Entry(frame1, show="*", font=("Futura", 16), width=25)
+    cardN.pack()
 
-    enterButton = Button(rootA, text='ENTER', command=checkExistence, font=(
+    enterButton = Button(frame1, text='ENTER', command=checkExistence, font=(
         "Futura", 12), fg="#24336C", bg="white")
-    enterButton.grid(row=4, columnspan=2, sticky=S)
+    enterButton.pack(pady=20)
     enterButton.bind("<FocusIn>", checkExistence)
 
-    rootA.eval('tk::PlaceWindow %s center' %
-               rootA.winfo_pathname(rootA.winfo_id()))
-    rootA.mainloop()
+    frame2 = Frame(scanScreen, relief=RAISED, borderwidth=5, bg="#24336C")
+    frame2.pack(fill=Y, side=RIGHT, padx=50, expand=1)
 
+    Label(frame2, text='Users Signed In\n', font=("Futura", 20),
+          fg="white", bg="#24336C").pack()
+
+    scrollbar = Scrollbar(frame2)
+    scrollbar.pack(side=RIGHT, fill=Y)
+    userList = Listbox(frame2, font=("Futura", 16),
+          fg="black", selectmode=MULTIPLE, yscrollcommand=scrollbar.set)
+    userList.pack()
+    scrollbar.config(command=userList.yview)
+
+    signOutButton = Button(frame2, text='Sign Out', command=signOut, font=(
+        "Futura", 12), fg="#24336C", bg="white")
+    signOutButton.pack(pady=20)
+
+    frame3 = Frame(scanScreen, bg="#24336C")
+    frame3.pack(fill=Y, padx=50, expand=1)
+
+    text.set('')
+    Label(frame3, textvariable=text, font=(
+        "Futura", 16), fg="white", bg="#24336C").pack()
+
+
+    cardN.focus_set()
+    scanScreen.focus_force()
+
+    scanScreen.mainloop()
+
+
+def signOut():
+    global userList
+
+    signOutIndex = userList.curselection()
+
+    for index in signOutIndex:
+        userList.delete(index)
+        writeToLog(usersSignedIn[index])
+    
 
 def checkExistence(event=""):
     if(cardN.get() != ""):
@@ -56,7 +108,8 @@ def checkExistence(event=""):
         cardN.delete(0, 'end')
         result = db.child('USERS').child(c).get().val()
         if(result != None):
-            writeToLog(result['FIRST'], result['LAST'], result['ID'])
+            writeToLog(user.User(result['FIRST'],
+                                 result['LAST'], result['ID'], c, True))
         else:
             enterInfo(c)
 
@@ -123,8 +176,8 @@ def checkField(event=""):
     if(re.search('[a-zA-Z]', firstN.get()) and re.search('[a-zA-Z]', lastN.get()) and re.search('[a-zA-Z]', idN.get()) and len(idN.get()) <= 10):
         holdValues = [firstN.get(), lastN.get(), idN.get()]
         rootB.destroy()
-        writeToBase(holdValues[0].capitalize(
-        ), holdValues[1].capitalize(), holdValues[2].upper(), cardID)
+        writeToBase(user.User(holdValues[0].capitalize(
+        ), holdValues[1].capitalize(), holdValues[2].upper(), cardID, True))
     else:
         aL = Label(rootB, text='Fill in all fields and use Drexel id!',
                    font=("Futura", 16), fg="white", bg="#24336C")
@@ -133,22 +186,28 @@ def checkField(event=""):
         mixer.music.play()
 
 
-def writeToBase(first, last, id, card):
-    db.child("USERS").child(cardID).set(
-        {'FIRST': first, 'LAST': last, 'ID': id})
-    subscribeToList(first, last, id, detailsArray[5], detailsArray[6])
-    writeToLog(first, last, id)
+def writeToBase(newUser):
+    db.child("USERS").child(newUser.cardId).set(
+        {'FIRST': newUser.first, 'LAST': newUser.last, 'ID': newUser.id})
+    subscribeToList(newUser, detailsArray[5], detailsArray[6])
+    writeToLog(newUser)
 
 
-def writeToLog(first, last, id):
+def writeToLog(newUser):
+    global usersSignedIn
+
+    scanScreen.focus_set() #Removes focus from the text box temporarily
     authorize()
     now = datetime.datetime.now()
-    lastEntry = worksheet.findall(id)
+    lastEntry = worksheet.findall(newUser.id)
 
     if(lastEntry == []):
         worksheet.append_row(
-            [first, last, id, now.strftime("%m-%d-%Y %H:%M:%S")])
-        alertUser(first)
+            [newUser.first, newUser.last, newUser.id, now.strftime("%m-%d-%Y %H:%M:%S")])
+        usersSignedIn.append(newUser)
+        userList.insert(END, newUser.first + ' ' + newUser.last)
+
+        alertUser(newUser.first)
     else:
         checkSign = worksheet.acell(
             'E' + str(lastEntry[len(lastEntry)-1].row)).value
@@ -160,51 +219,38 @@ def writeToLog(first, last, id):
                 'E' + str(lastEntry[len(lastEntry)-1].row), now.strftime("%m-%d-%Y %H:%M:%S"))
             worksheet.update_acell(
                 'F' + str(lastEntry[len(lastEntry)-1].row), str(timeSpent))
-            alertUser(first, timeSpent)
+            for cur in usersSignedIn:
+                if cur.id == newUser.id:
+                    usersSignedIn.remove(cur)
+                    try:
+                        delIndex = userList.get(0,END).index(cur.first + ' ' + cur.last)
+                        userList.delete(delIndex)
+                    except ValueError:
+                        print('Item can not be found in the list!')
+                    break
+            alertUser(newUser.first, timeSpent)
         else:
             worksheet.append_row(
-                [first, last, id, now.strftime("%m-%d-%Y %H:%M:%S")])
-            alertUser(first)
+                [newUser.first, newUser.last, newUser.id, now.strftime("%m-%d-%Y %H:%M:%S")])
+            usersSignedIn.append(newUser)
+            userList.insert(END, newUser.first + ' ' + newUser.last)
+            alertUser(newUser.first)
 
 
 def alertUser(first, t=""):
-    global rootC
-
-    rootC = Tk()
-    rootC.configure(background='#24336C')
-    rootC.title('Card Read Successful')
-
+    global cardN
     if(t == ""):
-        typeL = Label(rootC, text=('\n   Welcome ' + first + ',   \n   You Have Signed In   \n'),
-                      font=("Futura", 16), fg="white", bg="#24336C")
-        typeL.grid(row=1, column=0)
-        w = 250  # width for the Tk root
-        h = 100  # height for the Tk root
+        text.set('\n   Welcome ' + first + ',   \n   You Have Signed In   \n')
         mixer.music.load('sounds/hello.mp3')
 
     else:
-        typeL = Label(rootC, text=('\n   Farewell ' + first + ',   \n   You Have Signed Out   \n\n   Total Time: ' +
-                                   str(t) + '   \n'), font=("Futura", 16), fg="white", bg="#24336C")
-        typeL.grid(row=1, column=0)
-        w = 300  # width for the Tk root
-        h = 150  # height for the Tk root
+        text.set('\n   Farewell ' + first +
+                 ',   \n   You Have Signed Out   \n\n   Total Time: ' + str(t) + '   \n')
         mixer.music.load('sounds/goodbye.mp3')
+    scanScreen.after(2000, text.set, '')
+    scanScreen.after(2000, cardN.focus_set)
 
-    rootC.after(1000, clearScreen)
-
-    ws = rootC.winfo_screenwidth()  # width of the screen
-    hs = rootC.winfo_screenheight()  # height of the screen
-
-    x = (ws/2) - (w/2)
-    y = (hs/4) - (h/2)
-    rootC.geometry('%dx%d+%d+%d' % (w, h, x, y))
     mixer.music.play()
-    rootC.mainloop()
-
-
-def clearScreen():
-    rootC.destroy()
-    cardRead()
 
 
 def authorize():
@@ -214,14 +260,14 @@ def authorize():
     worksheet = sheet.get_worksheet(0)
 
 
-def subscribeToList(fName, lName, email, listId, key):
+def subscribeToList(newUser, listId, key):
     client = MailChimp(mc_api=key, mc_user='DSH_CARD_READER')
     client.lists.members.create(listId, {
-        'email_address': email.lower() + '@drexel.edu',
+        'email_address': newUser.email,
         'status': 'subscribed',
         'merge_fields': {
-            'FNAME': fName,
-            'LNAME': lName,
+            'FNAME': newUser.first,
+            'LNAME': newUser.last,
         },
     })
 
@@ -248,4 +294,4 @@ if __name__ == "__main__":
     credentials = ServiceAccountCredentials.from_json_keyfile_name(
         'creds.json', ['https://spreadsheets.google.com/feeds'])
     mixer.init()
-    cardRead()
+    init()

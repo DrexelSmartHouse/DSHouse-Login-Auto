@@ -14,3 +14,6 @@ requests==2.20.0
 
 # Sound
 Pygame==1.9.4 
+
+#Images
+Pillow==5.4.0
