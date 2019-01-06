@@ -18,7 +18,7 @@ text = StringVar()
 logoPath = "pictures/bannerLogo.png"
 
 WIDTH = scanScreen.winfo_screenwidth()
-HEIGHT = scanScreen.winfo_screenheight()
+HEIGHT = scanScreen.winfo_screenheight() - 60
 
 
 def init():
@@ -28,24 +28,24 @@ def init():
     global userList
     global frame3
 
-    scanScreen.geometry('%dx%d' % (WIDTH, HEIGHT))
+    scanScreen.geometry('%dx%d+%d+%d' % (WIDTH, HEIGHT, 0, 0))
     scanScreen.configure(background='#24336C')
     scanScreen.title('Drexel Smart House Card Scanner')
 
     photoFrame = Frame(scanScreen, bg="#24336C")
-    photoFrame.pack(side=TOP)
+    photoFrame.pack(side=TOP, pady = 20)
 
     img = Image.open(logoPath)
     [imageWidth, imageHeight] = img.size
     # Compute resize ratio for max size with half height of the screen and full width
-    n = min(WIDTH/imageWidth, HEIGHT/2/imageHeight)
+    n = min(WIDTH/imageWidth, HEIGHT/2.3/imageHeight)
     img = img.resize(
         (int(imageWidth * n), int(imageHeight * n)), Image.ANTIALIAS)
     photo = ImageTk.PhotoImage(img)
     Label(photoFrame, image=photo, bg="#24336C").pack(fill=X)
 
     frame1 = Frame(scanScreen, relief=RAISED, borderwidth=5, bg="#24336C")
-    frame1.pack(fill=Y, side=LEFT, padx=50, expand=1)
+    frame1.pack(fill=Y, side=LEFT, padx=50, expand=1, pady = 20)
 
     Label(frame1, text='Please Scan Your Card\n',
           font=("Futura", 20), fg="white", bg="#24336C").pack()
@@ -62,7 +62,7 @@ def init():
     enterButton.bind("<FocusIn>", checkExistence)
 
     frame2 = Frame(scanScreen, relief=RAISED, borderwidth=5, bg="#24336C")
-    frame2.pack(fill=Y, side=RIGHT, padx=50, expand=1)
+    frame2.pack(fill=Y, side=RIGHT, padx=50, expand=1, pady = 20)
 
     Label(frame2, text='Users Signed In\n', font=("Futura", 20),
           fg="white", bg="#24336C").pack()
