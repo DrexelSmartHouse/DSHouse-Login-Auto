@@ -9,13 +9,14 @@ DSH sign in system using Drexel ID cards. Included automatic addition to emailin
   - [Hardware setup](#hardwaresetup)
   - [Software setup](#softwaresetup)
 - [Releases](#releases)
+- [Future Features](#future)
 - [Contributors](#contributors)
 
 ## Features <a name="features"></a>
  - Fast RFID-Based DSHouse sign-in using Drexel ID cards
  - User management with Firebase
  - New member email automation with Mailchimp
- - Sound effects
+ - UI and Sound effects
 
 ## Quick start <a name="quickstart"></a>
 
@@ -36,8 +37,19 @@ DSH sign in system using Drexel ID cards. Included automatic addition to emailin
 4. Then run `python3.7 cardReader.py`. The program should launch.
 
 ## Releases <a name="releases"></a>
-Version 1.0 - Initial Release.
-Version 2.0 - Made multiple sequential sign-ins faster. Added sounds, and connection to the mailchimp API.
+Version 1.0 - Initial Release.  
+Version 2.0 - Made multiple sequential sign-ins faster. Added sounds, and connection to the mailchimp API.  
+Version 3.0 - Updated UI. List of members currently signed in to the house. Manual house sign-out. "Signed In" list now populates initially based on the Logs.  
+Version 4.0:
+- Async/threaded tasks for faster sign-in and better user experience. Periodic, async google sheets auth
+- Added new mailchimp email list user experience
+- Updated Drexel ID Regex to be more inline with current student ID's
+- Fixed bugs with multiple user sign out, list population
+- Moved to a faster, more maintained firebase library
+- Cleaned code
+
+## Future Features <a name="future"></a>
+- None.
 
 ## Contributors <a name="contributors"></a>
 - [Joshua Cohen](https://github.com/jcohen98)
