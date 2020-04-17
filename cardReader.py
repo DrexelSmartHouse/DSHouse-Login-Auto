@@ -1,18 +1,19 @@
-import asyncio
 import datetime
+import threading
+import time
 from tkinter import *
-from PIL import ImageTk, Image
 
 import gspread
-import pyrebase
+from PIL import ImageTk, Image
+from firebase.firebase import FirebaseApplication, FirebaseAuthentication
 from mailchimp3 import MailChimp
+from mailchimp3 import helpers
 from oauth2client.service_account import ServiceAccountCredentials
 from pygame import mixer
+
 import user
 
-cardN = None
 scanScreen = Tk()
-userList = None
 usersSignedIn = []
 text = StringVar()
 logoPath = "pictures/bannerLogo.png"
@@ -20,39 +21,44 @@ logoPath = "pictures/bannerLogo.png"
 WIDTH = scanScreen.winfo_screenwidth()
 HEIGHT = scanScreen.winfo_screenheight() - 60
 
+DELAY = 120
+
 
 def init():
-    global scanScreen
     global cardN
-    global usersSignedIn
     global userList
-    global frame3
 
+    # Configure main card scanner screen
     scanScreen.geometry('%dx%d+%d+%d' % (WIDTH, HEIGHT, 0, 0))
     scanScreen.configure(background='#24336C')
     scanScreen.title('Drexel Smart House Card Scanner')
+    scanScreen.columnconfigure(0, weight=1)
+    scanScreen.rowconfigure(0, weight=1)
 
     photoFrame = Frame(scanScreen, bg="#24336C")
-    photoFrame.pack(side=TOP, pady = 20)
+    photoFrame.pack(side=TOP, pady=20)
 
     img = Image.open(logoPath)
     [imageWidth, imageHeight] = img.size
     # Compute resize ratio for max size with half height of the screen and full width
-    n = min(WIDTH/imageWidth, HEIGHT/2.3/imageHeight)
+    n = min(WIDTH / imageWidth, HEIGHT / 2.3 / imageHeight)
     img = img.resize(
         (int(imageWidth * n), int(imageHeight * n)), Image.ANTIALIAS)
     photo = ImageTk.PhotoImage(img)
     Label(photoFrame, image=photo, bg="#24336C").pack(fill=X)
 
     frame1 = Frame(scanScreen, relief=RAISED, borderwidth=5, bg="#24336C")
-    frame1.pack(fill=Y, side=LEFT, padx=50, expand=1, pady = 20)
+    frame1.pack(fill=Y, side=LEFT, padx=50, expand=1, pady=20)
 
     Label(frame1, text='Please Scan Your Card\n',
-          font=("Futura", 20), fg="white", bg="#24336C").pack()
+          font=("Futura", 20), fg="white", bg="#24336C") \
+        .pack()
 
     Label(frame1, text='Card ID:', font=(
-        "Futura", 16), fg="white", bg="#24336C").pack()
+        "Futura", 16), fg="white", bg="#24336C") \
+        .pack()
 
+    # Picks up RFID card number from scanned card
     cardN = Entry(frame1, show="*", font=("Futura", 16), width=25)
     cardN.pack()
 
@@ -62,19 +68,18 @@ def init():
     enterButton.bind("<FocusIn>", checkExistence)
 
     frame2 = Frame(scanScreen, relief=RAISED, borderwidth=5, bg="#24336C")
-    frame2.pack(fill=Y, side=RIGHT, padx=50, expand=1, pady = 20)
+    frame2.pack(fill=Y, side=RIGHT, padx=50, expand=1, pady=20)
 
-    Label(frame2, text='Users Signed In\n', font=("Futura", 20),
-          fg="white", bg="#24336C").pack()
+    Label(frame2, text='Users Signed In\n', font=("Futura", 20), fg="white", bg="#24336C") \
+        .pack()
 
     scrollbar = Scrollbar(frame2)
     scrollbar.pack(side=RIGHT, fill=Y)
-    userList = Listbox(frame2, font=("Futura", 16),
-                       fg="black", selectmode=SINGLE, yscrollcommand=scrollbar.set)
+    userList = Listbox(frame2, font=("Futura", 16), fg="black", selectmode=MULTIPLE, yscrollcommand=scrollbar.set)
     userList.pack()
     scrollbar.config(command=userList.yview)
 
-    signOutButton = Button(frame2, text='Sign Out', command=signOut, font=(
+    signOutButton = Button(frame2, text='Sign Out', command=signOutButtonAction, font=(
         "Futura", 12), fg="#24336C", bg="white")
     signOutButton.pack(pady=20)
 
@@ -82,8 +87,8 @@ def init():
     frame3.pack(fill=Y, padx=50, expand=1)
 
     text.set('')
-    Label(frame3, textvariable=text, font=(
-        "Futura", 16), fg="white", bg="#24336C").pack()
+    Label(frame3, textvariable=text, font=("Futura", 16), fg="white", bg="#24336C") \
+        .pack()
 
     cardN.focus_set()
     scanScreen.focus_force()
@@ -92,22 +97,22 @@ def init():
     scanScreen.mainloop()
 
 
-def signOut():
-    global userList
-
-    signOutIndex = userList.curselection()
-
+def signOutButtonAction():
+    signOutIndex = list(userList.curselection())
+    signOutIndex.reverse()
     for index in signOutIndex:
-        userList.delete(index)
         writeToLog(usersSignedIn[index])
+        usersSignedIn.remove(usersSignedIn[index])
+        userList.delete(index)
 
 
 def checkExistence(event=""):
-    if(cardN.get() != ""):
+    if cardN.get() != "":
         c = cardN.get()
         cardN.delete(0, 'end')
-        result = db.child('USERS').child(c).get().val()
-        if(result != None):
+        result = firebase.get('/USERS/' + c, None, params={'print': 'pretty'}, headers={'X_FANCY_HEADER': 'very fancy'})
+        # If person has signed in before, write to the sign in log
+        if result is not None:
             writeToLog(user.User(result['FIRST'],
                                  result['LAST'], result['ID'], c))
         else:
@@ -120,6 +125,7 @@ def enterInfo(c):
     global idN
     global rootB
     global cardID
+    global emailOptOut
 
     cardID = c
     rootB = Tk()
@@ -130,33 +136,38 @@ def enterInfo(c):
         "Futura", 20), fg="white", bg="#24336C")
     instruction.grid(row=0, columnspan=2)
 
-    firstL = Label(rootB, text='Full First Name:', font=(
+    firstL = Label(rootB, text='First Name:', font=(
         "Futura", 16), fg="white", bg="#24336C")
-    lastL = Label(rootB, text='Full Last Name:', font=(
+    lastL = Label(rootB, text='Last Name:', font=(
         "Futura", 16), fg="white", bg="#24336C")
     idL = Label(rootB, text='Drexel ID (ABC123):', font=(
         "Futura", 16), fg="white", bg="#24336C")
+
     firstL.grid(row=1, column=0, sticky=W)
     lastL.grid(row=3, column=0, sticky=W)
     idL.grid(row=5, column=0, sticky=W)
 
     sL = Label(rootB, text='S', font=("Futura", 16),
                fg="#24336C", bg="#24336C")
-    sL.grid(row=7, column=0, sticky=W)
+    sL.grid(row=8, column=0, sticky=W)
 
     firstN = Entry(rootB, font=("Futura", 16), width=25)
     lastN = Entry(rootB, font=("Futura", 16), width=25)
     idN = Entry(rootB, font=("Futura", 16), width=25)
-    firstN.grid(row=2, column=0, sticky=E)
-    lastN.grid(row=4, column=0, sticky=E)
-    idN.grid(row=6, column=0, sticky=E)
+    emailOptOut = IntVar()
+    Checkbutton(rootB, text="Would you like to opt out of receiving important emails from Drexel Smart House?",
+                variable=emailOptOut, font=("Futura", 10), selectcolor="#24336C", fg="white",
+                bg="#24336C").grid(row=7, column=0)
+    firstN.grid(row=2, column=0)
+    lastN.grid(row=4, column=0)
+    idN.grid(row=6, column=0)
 
     firstN.focus_set()
     rootB.focus_force()
 
     enterButton = Button(rootB, text='ENTER', command=checkField, font=(
         "Futura", 12), fg="#24336C", bg="white")
-    enterButton.grid(row=8, columnspan=2)
+    enterButton.grid(row=9, columnspan=2)
 
     firstN.bind("<Return>", checkField)
     lastN.bind("<Return>", checkField)
@@ -173,11 +184,13 @@ def enterInfo(c):
 
 
 def checkField(event=""):
-    if(re.search('[a-zA-Z]', firstN.get()) and re.search('[a-zA-Z]', lastN.get()) and re.search('[a-zA-Z]', idN.get()) and len(idN.get()) <= 10):
+    if (re.search('[a-zA-Z]', firstN.get()) and re.search('[a-zA-Z]', lastN.get()) and re.search(
+            '([a-zA-Z]{3}[1-9]{2,3})',
+            idN.get())):
         holdValues = [firstN.get(), lastN.get(), idN.get()]
         rootB.destroy()
         writeToBase(user.User(holdValues[0].capitalize(
-        ), holdValues[1].capitalize(), holdValues[2].upper(), cardID))
+        ), holdValues[1].capitalize(), holdValues[2].upper(), cardID, emailOptOut.get()))
     else:
         aL = Label(rootB, text='Fill in all fields and use Drexel id!',
                    font=("Futura", 16), fg="white", bg="#24336C")
@@ -187,84 +200,84 @@ def checkField(event=""):
 
 
 def writeToBase(newUser):
-    db.child("USERS").child(newUser.cardId).set(
-        {'FIRST': newUser.first, 'LAST': newUser.last, 'ID': newUser.id})
-    subscribeToList(newUser, detailsArray[5], detailsArray[6])
+    data = {'FIRST': newUser.first, 'LAST': newUser.last, 'ID': newUser.id}
+    firebase.put('/USERS', newUser.cardId, data)
+    if newUser.emailOptOut == 0:
+        emailSubThread = threading.Thread(target=subscribeToList, args=(newUser, detailsArray[5], detailsArray[6]))
+        emailSubThread.start()
     writeToLog(newUser)
 
 
 def pullSignedInUsersFromLog():
-    global usersSignedIn
-    global userList
-    authorize()
-    column_vals = worksheet.col_values(5)
-    signedInUserIdxs = [i for i, x in enumerate(column_vals) if x == ""]
-    for i in (signedInUserIdxs):
-        fName = worksheet.acell('A' + str(i+1)).value
-        lName = worksheet.acell('B' + str(i+1)).value
-        drexelId = worksheet.acell('C' + str(i+1)).value
+    sign_in_col_vals = worksheet.col_values(4)
+    sign_out_col_vals = worksheet.col_values(5)
+    # Search within the sheet to see if anyone has not properly signed out
+    signedInUserIdxs = [i for i, x in enumerate(sign_out_col_vals) if x == ""]
+    # Search the end of the sheet to see if anyone has not properly signed out
+    signedInUserIdxs.extend(x for x in range(len(sign_out_col_vals), len(sign_in_col_vals)))
+    for i in signedInUserIdxs:
+        fName = worksheet.acell('A' + str(i + 1)).value
+        lName = worksheet.acell('B' + str(i + 1)).value
+        drexelId = worksheet.acell('C' + str(i + 1)).value
         userList.insert(END, fName + ' ' + lName)
         usersSignedIn.append(user.User(fName, lName, drexelId, None))
 
 
-def writeToLog(newUser):
-    global usersSignedIn
-    global userList
-
-    scanScreen.focus_set()  # Removes focus from the text box temporarily
-    authorize()
+def signInUser(newUser):
     now = datetime.datetime.now()
+    worksheet.append_row(
+        [newUser.first, newUser.last, newUser.id, now.strftime("%m-%d-%Y %H:%M:%S")])
+    usersSignedIn.append(newUser)
+    userList.insert(END, newUser.first + ' ' + newUser.last)
+
+
+def signOutUser(newUser, lastEntry):
+    signType = "SIGNOUT"
+    now = datetime.datetime.now()
+    lastDate = datetime.datetime.strptime(worksheet.acell(
+        'D' + str(lastEntry[len(lastEntry) - 1].row)).value, "%m-%d-%Y %H:%M:%S")
+    timeSpent = now - lastDate
+    worksheet.update_acell(
+        'E' + str(lastEntry[len(lastEntry) - 1].row), now.strftime("%m-%d-%Y %H:%M:%S"))
+    worksheet.update_acell(
+        'F' + str(lastEntry[len(lastEntry) - 1].row), str(timeSpent))
+
+
+def writeToLog(newUser):
+    scanScreen.focus_set()  # Removes focus from the text box temporarily
     lastEntry = worksheet.findall(newUser.id)
-
-    if(lastEntry == []):
-        worksheet.append_row(
-            [newUser.first, newUser.last, newUser.id, now.strftime("%m-%d-%Y %H:%M:%S")])
-        usersSignedIn.append(newUser)
-        userList.insert(END, newUser.first + ' ' + newUser.last)
-        alertUser(newUser.first)
+    timeSpent = datetime.timedelta
+    # If the user is signing in and is a new user (Did not find in the logs)
+    if lastEntry == []:
+        signType = "SIGNIN"
+        signInThread = threading.Thread(target=signInUser, args=(newUser,))
+        signInThread.start()
+    # If the user has signed in before
     else:
+        # Check whether they are signing in or out
         checkSign = worksheet.acell(
-            'E' + str(lastEntry[len(lastEntry)-1].row)).value
-        if(checkSign == ""):
-            lastDate = datetime.datetime.strptime(worksheet.acell(
-                'D' + str(lastEntry[len(lastEntry)-1].row)).value, "%m-%d-%Y %H:%M:%S")
-            timeSpent = now - lastDate
-            worksheet.update_acell(
-                'E' + str(lastEntry[len(lastEntry)-1].row), now.strftime("%m-%d-%Y %H:%M:%S"))
-            worksheet.update_acell(
-                'F' + str(lastEntry[len(lastEntry)-1].row), str(timeSpent))
-            for cur in usersSignedIn:
-                if cur.id == newUser.id:
-                    usersSignedIn.remove(cur)
-                    try:
-                        delIndex = userList.get(0, END).index(
-                            cur.first + ' ' + cur.last)
-                        userList.delete(delIndex)
-                    except ValueError:
-                        print('Item can not be found in the list!')
-                    break
-            alertUser(newUser.first, timeSpent)
+            'E' + str(lastEntry[len(lastEntry) - 1].row)).value
+        if checkSign == "":
+            signType = "SIGNOUT"
+            signOutThread = threading.Thread(target=signOutUser, args=(newUser, lastEntry))
+            signOutThread.start()
         else:
-            worksheet.append_row(
-                [newUser.first, newUser.last, newUser.id, now.strftime("%m-%d-%Y %H:%M:%S")])
-            usersSignedIn.append(newUser)
-            userList.insert(END, newUser.first + ' ' + newUser.last)
-            alertUser(newUser.first)
+            signType = "SIGNIN"
+            signInThread = threading.Thread(target=signInUser, args=(newUser,))
+            signInThread.start()
+    alertUser(newUser.first, signType)
 
 
-def alertUser(first, t=""):
-    global cardN
-    if(t == ""):
+def alertUser(first, signType):
+    if signType == "SIGNIN":
         text.set('\n   Welcome ' + first + ',   \n   You Have Signed In   \n')
         mixer.music.load('sounds/hello.mp3')
 
     else:
-        text.set('\n   Farewell ' + first +
-                 ',   \n   You Have Signed Out   \n\n   Total Time: ' + str(t) + '   \n')
+        text.set('\n   Farewell ' + first + ',   \n   You Have Signed Out   \n')
         mixer.music.load('sounds/goodbye.mp3')
-    scanScreen.after(2000, text.set, '')
-    scanScreen.after(2000, cardN.focus_set)
-
+    scanScreen.after(1500, text.set, '')
+    scanScreen.after(1500, cardN.focus_set)
     mixer.music.play()
 
 
@@ -275,11 +288,18 @@ def authorize():
     worksheet = sheet.get_worksheet(0)
 
 
+def keepAuthorized():
+    while True:
+        authorize()
+        time.sleep(DELAY)
+
+
 def subscribeToList(newUser, listId, key):
     client = MailChimp(mc_api=key, mc_user='DSH_CARD_READER')
-    client.lists.members.create(listId, {
+    client.lists.members.create_or_update(listId, helpers.get_subscriber_hash(newUser.email), {
         'email_address': newUser.email,
         'status': 'subscribed',
+        'status_if_new': 'subscribed',
         'merge_fields': {
             'FNAME': newUser.first,
             'LNAME': newUser.last,
@@ -296,17 +316,15 @@ if __name__ == "__main__":
             detailsArray.append(line.strip())
             line = fp.readline()
 
-    config = {
-        "apiKey": detailsArray[4],
-        "authDomain": "projectId.firebaseapp.com",
-        "databaseURL": detailsArray[2],
-        "storageBucket": "projectId.appspot.com"
-    }
-
-    firebase = pyrebase.initialize_app(config)
-    db = firebase.database()
+    authentication = FirebaseAuthentication(detailsArray[7], detailsArray[0], True, True)
+    firebase = FirebaseApplication(detailsArray[2], authentication)
 
     credentials = ServiceAccountCredentials.from_json_keyfile_name(
         'creds.json', ['https://spreadsheets.google.com/feeds'])
+
     mixer.init()
+    authorize()
+    timerThread = threading.Thread(target=keepAuthorized)
+    timerThread.daemon = True
+    timerThread.start()
     init()
